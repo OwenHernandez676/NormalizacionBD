@@ -1,0 +1,70 @@
+:root {
+    --grad: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+}
+
+body {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f6f7fb 0, #dfe6f2 100%);
+}
+
+.card-glass {
+    background: rgba(255, 255, 255, .92);
+    border: 1px solid rgba(0, 0, 0, .06);
+    border-radius: 16px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, .08);
+}
+
+.title {
+    background: var(--grad);
+    -webkit-background-clip: text;
+    color: transparent;
+    font-weight: 800;
+}
+
+.table thead th {
+    background: var(--grad);
+    color: #fff;
+    border: none;
+}
+
+pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem;
+}
+
+.picker-wrap {
+    position: relative;
+}
+
+.picker-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1080;
+    display: none;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, .08);
+    border-radius: 12px;
+    box-shadow: 0 14px 28px rgba(0, 0, 0, .15);
+    max-height: 280px;
+    overflow: auto;
+    margin-top: .25rem;
+}
+
+.picker-panel.show {
+    display: block;
+}
+
+.hint {
+    font-size: .85rem;
+    color: #6c757d;
+}
+
+.lead {
+    font-size: 1rem;
+    color: #252526;
+    text-align: center;
+}

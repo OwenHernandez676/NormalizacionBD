@@ -1,4 +1,3 @@
-# scripts/normalizer.py
 import pandas as pd
 import re
 from itertools import combinations
@@ -11,13 +10,12 @@ def _clean_value(v):
         return None
     if isinstance(v, str):
         v = v.strip()
-        v = re.sub(r"^[\[\(\{]\s*|\s*[\]\)\}]$", "", v)  # quita [] () {}
+        v = re.sub(r"^[\[\(\{]\s*|\s*[\]\)\}]$", "", v)
         return v if v != "" else None
     return v
 
 
 def split_multivalue(value):
-    """Devuelve lista de valores si detecta separadores, si no, lista de 1 valor."""
     if pd.isna(value):
         return []
     if not isinstance(value, str):
@@ -35,10 +33,6 @@ def split_multivalue(value):
 
 
 def detect_tables(estructura_df: pd.DataFrame):
-    """
-    Espera columnas: tabla, atributo, tipo (opcional), llave (PK, FK:Tabla(Col), vacío)
-    Devuelve un dict con metadatos por tabla.
-    """
     estructura_df = estructura_df.copy()
     estructura_df["llave"] = estructura_df.get("llave", pd.Series([""] * len(estructura_df))).astype(str)
 
@@ -54,7 +48,6 @@ def detect_tables(estructura_df: pd.DataFrame):
         fks_map = []
         fk_rows = chunk[chunk['llave'].str.contains('FK', case=False, na=False)]
         for _, row in fk_rows.iterrows():
-            # Formatos: "FK:Clientes(idCliente)" o "FK Clientes(idCliente)"
             m = re.search(r'FK\s*:?\s*([A-Za-z0-9_\.]+)\s*\(\s*([A-Za-z0-9_]+)\s*\)', str(row['llave']))
             if m:
                 fks_map.append((row['atributo'], m.group(1), m.group(2)))
@@ -64,7 +57,6 @@ def detect_tables(estructura_df: pd.DataFrame):
 
 
 def proper_subsets(pk):
-    """Subconjuntos propios no vacíos de la clave compuesta."""
     out = []
     for r in range(1, len(pk)):
         out += [list(c) for c in combinations(pk, r)]
@@ -72,16 +64,10 @@ def proper_subsets(pk):
 
 
 def depends_on(df: pd.DataFrame, determinant_cols, target):
-    """
-    Heurística: target depende funcionalmente de determinant_cols si, ignorando NaNs,
-    por cada combinación de determinant_cols solo hay un valor de target y existe
-    *algo* de soporte (al menos un determinante repetido o grupo con >=2 filas).
-    """
     needed = list(determinant_cols) + [target]
     if any(col not in df.columns for col in needed):
         return False
 
-    # Filtra filas con NaN en determinantes o target
     df2 = df.dropna(subset=determinant_cols)
     df2 = df2[df2[target].notna()]
     if df2.empty:
@@ -91,39 +77,28 @@ def depends_on(df: pd.DataFrame, determinant_cols, target):
     nunq = grp[target].nunique(dropna=True)
     sizes = grp.size()
 
-    # Condición de dependencia (cada grupo tiene un único target)
     unique_per_group = (nunq.max() == 1)
-    # Soporte: existe al menos un grupo con tamaño >= 2 (evita "depende" por datos escasos)
     has_support = (sizes.max() >= 2)
 
     return bool(unique_per_group and has_support)
 
 
 def normalize_1NF(table_name, meta, df):
-    """
-    1FN: separa atributos multivaluados en tablas hijas, desmontando listas A,B,C.
-    - Mantiene la tabla base sin esos atributos (deduplicada por PK si existe).
-    - Crea tablas hijas {tabla}_{atributo} con PK = PK_base + atributo
-    """
     result_tables = {}
     schema = {}
 
     base_cols = [c for c in meta['attrs'] if c in df.columns]
     base_df = df[base_cols].copy()
-    # NO mezclar basura: elimina filas completamente vacías en el subset de columnas
     base_df = base_df.dropna(how="all")
 
-    # Detectar multivaluados
     multival_cols = []
     for col in base_cols:
         try:
             if base_df[col].apply(lambda x: len(split_multivalue(x))).max() > 1:
                 multival_cols.append(col)
         except Exception:
-            # Columnas no-string con tipos raros: ignora
             pass
 
-    # Construye tablas hijas
     for mv in multival_cols:
         child_name = f"{table_name}_{mv}"
         pk_cols = meta['pk'][:] if len(meta['pk']) > 0 else [f"{table_name}_id_auto"]
@@ -139,12 +114,10 @@ def normalize_1NF(table_name, meta, df):
                 expanded_rows.append(new_row)
         child_df = pd.DataFrame(expanded_rows).dropna(how="all").drop_duplicates()
 
-        # tipos
         types = {}
         for c in child_df.columns:
             types[c] = meta['types'].get(c, 'NVARCHAR(255)')
 
-        # PK de hija: pk base + mv
         child_pk = pk_cols + [mv]
         schema[child_name] = {
             'attrs': list(child_df.columns),
@@ -154,10 +127,8 @@ def normalize_1NF(table_name, meta, df):
         }
         result_tables[child_name] = child_df
 
-    # Quitar columnas multivaluadas de la base
     base_df = base_df.drop(columns=multival_cols, errors='ignore').dropna(how="all").drop_duplicates()
 
-    # Si no había PK y se generó {tabla}_id_auto, lo trasladamos a base
     if len(meta['pk']) == 0 and f"{table_name}_id_auto" in base_df.columns:
         meta_pk = [f"{table_name}_id_auto"]
     else:
@@ -167,7 +138,7 @@ def normalize_1NF(table_name, meta, df):
         'attrs': list(base_df.columns),
         'types': {c: meta['types'].get(c, 'NVARCHAR(255)') for c in base_df.columns},
         'pk': meta_pk,
-        'fks': meta['fks'][:]  # FKs definidas en estructura
+        'fks': meta['fks'][:]
     }
     result_tables[table_name] = base_df
 
@@ -175,17 +146,12 @@ def normalize_1NF(table_name, meta, df):
 
 
 def normalize_2NF(table_name, schema, tables_data):
-    """
-    2FN: Para tablas con PK compuesta, separa atributos que dependen de parte de la PK.
-    Crea tablas determinantes por cada subconjunto y hace que la TABLA BASE
-    tenga FK -> TABLA_DETERMINANTE (NO al revés).
-    """
     meta = schema[table_name]
     df = tables_data[table_name].copy()
 
     pk = meta['pk']
     if len(pk) < 2:
-        return schema, tables_data, []  # nada que hacer
+        return schema, tables_data, []
 
     created = []
     for sub in proper_subsets(pk):
@@ -201,7 +167,6 @@ def normalize_2NF(table_name, schema, tables_data):
             cols = sub + dependents
             new_df = df[cols].drop_duplicates().copy()
 
-            # esquema de la tabla determinante (sin FK hacia la base)
             types = {c: meta['types'].get(c, 'NVARCHAR(255)') for c in cols}
             schema[new_name] = {
                 'attrs': cols,
@@ -211,7 +176,6 @@ def normalize_2NF(table_name, schema, tables_data):
             }
             tables_data[new_name] = new_df
 
-            # En la base, quitamos los dependientes y agregamos FK(sub) -> new_name(sub)
             df = df.drop(columns=dependents, errors='ignore')
             base_fks = schema[table_name].get('fks', [])
             for s in sub:
@@ -221,7 +185,6 @@ def normalize_2NF(table_name, schema, tables_data):
 
             created.append((new_name, sub, dependents))
 
-    # Actualizar datos y schema de la tabla base
     df = df.drop_duplicates()
     tables_data[table_name] = df
     schema[table_name]['attrs'] = list(df.columns)
@@ -233,10 +196,6 @@ def normalize_2NF(table_name, schema, tables_data):
 
 
 def normalize_3NF(table_name, schema, tables_data):
-    """
-    3FN: Detecta dependencias transitivas entre NO claves (A→B, con A no clave).
-    Crea tabla dimensión {tabla}_dim_{A} con PK = A y columnas dependientes.
-    """
     meta = schema[table_name]
     df = tables_data[table_name].copy()
     pk = set(meta['pk'])
@@ -244,7 +203,7 @@ def normalize_3NF(table_name, schema, tables_data):
     non_keys = [c for c in df.columns if c not in pk]
     created = []
 
-    used_as_det = set()  # evita crear múltiples veces para el mismo determinante
+    used_as_det = set()
     for det in non_keys:
         if det in used_as_det:
             continue
@@ -270,7 +229,6 @@ def normalize_3NF(table_name, schema, tables_data):
             tables_data[new_name] = new_df
             created.append((new_name, det, dependents))
 
-            # En la tabla base, retiramos los dependents; mantenemos 'det' como FK a la dimensión
             df = df.drop(columns=dependents, errors='ignore')
             base_fks = schema[table_name].get('fks', [])
             if (det, new_name, det) not in base_fks:
@@ -285,7 +243,6 @@ def normalize_3NF(table_name, schema, tables_data):
         c: schema[table_name]['types'].get(c, meta['types'].get(c, 'NVARCHAR(255)'))
         for c in df.columns
     }
-
     return schema, tables_data, created
 
 
@@ -313,16 +270,10 @@ def map_sql_type(t: str):
         return s
     if "BIT" in s or "BOOL" in s:
         return "BIT"
-    # por defecto
     return "NVARCHAR(255)"
 
 
 def _safe_id(name: str) -> str:
-    """
-    Convierte el nombre en un identificador seguro para Mermaid ER:
-    - Reemplaza cualquier cosa que no sea [A-Za-z0-9_] por "_"
-    - Evita empezar por número anteponiendo "_"
-    """
     sid = re.sub(r'[^A-Za-z0-9_]', '_', str(name))
     if re.match(r'^[0-9]', sid):
         sid = '_' + sid
@@ -330,14 +281,9 @@ def _safe_id(name: str) -> str:
 
 
 def generate_mermaid(schema):
-    """
-    ER con Mermaid (client-side). Usa IDs seguros para entidades y corrige la sintaxis de relaciones.
-    """
     idmap = {t: _safe_id(t) for t in schema.keys()}
-
     lines = ["erDiagram"]
 
-    # entidades
     for t, meta in schema.items():
         tid = idmap[t]
         lines.append(f"  {tid} {{")
@@ -356,7 +302,6 @@ def generate_mermaid(schema):
             lines.append(f"    {mtyp} {col}")
         lines.append("  }")
 
-    # relaciones
     for t, meta in schema.items():
         t_id = idmap[t]
         for (fk_col, ref_table, ref_col) in meta.get('fks', []):
@@ -364,7 +309,6 @@ def generate_mermaid(schema):
                 continue
             r_id = idmap[ref_table]
             label = f'{fk_col}->{ref_table}.{ref_col}'
-            # En f-strings, '}}' => '}' literal. Mermaid verá }o--|| (correcto).
             lines.append(f'  {t_id} }}o--|| {r_id} : "{label}"')
 
     return "\n".join(lines)
@@ -383,7 +327,6 @@ def generate_sql(schema):
         table_stmt = f"CREATE TABLE [{t}] (\n" + ",\n".join(cols_defs) + pk_stmt + "\n);\n"
         stmts.append(table_stmt)
 
-    # FKs (una por columna determinante; opcional: consolidar en multicolumna)
     for t, meta in schema.items():
         for i, (fk_col, ref_table, ref_col) in enumerate(meta.get('fks', []), start=1):
             fk_name = f"FK_{t}_{fk_col}_{i}"
@@ -391,7 +334,6 @@ def generate_sql(schema):
                 f"ALTER TABLE [{t}] ADD CONSTRAINT [{fk_name}] FOREIGN KEY ([{fk_col}]) "
                 f"REFERENCES [{ref_table}]([{ref_col}]);\n"
             )
-
     return "\n".join(stmts)
 
 
@@ -410,45 +352,30 @@ def generate_description(schema):
 
 
 def normalizar_pipeline(estructura_df: pd.DataFrame, datos_df: pd.DataFrame):
-    """
-    Ejecuta 1FN → 2FN → 3FN por cada tabla detectada en 'estructura_df' usando 'datos_df'.
-    Devuelve:
-      - schema_final (dict)
-      - tablas_data (dict[str, DataFrame])
-      - mermaid (str)
-      - sql_script (str)
-      - descripcion (str)
-      - resumen_acciones (dict por tabla con detalles de lo hecho)
-    """
     base_tables = detect_tables(estructura_df)
 
     schema_final = {}
     tablas_data = {}
     resumen_acciones = {}
 
-    # Si 'datos_df' contiene columnas de múltiples tablas, extraemos por tabla
     for t, meta in base_tables.items():
         cols = [c for c in meta['attrs'] if c in datos_df.columns]
         if not cols:
             continue
 
-        # 🔧 CLAVE: si existe columna '__tabla', filtra filas de esa tabla
         if "__tabla" in datos_df.columns:
             mask = datos_df["__tabla"].astype(str).str.strip() == str(t)
             df_t = datos_df.loc[mask, cols].copy()
         else:
             df_t = datos_df[cols].copy()
 
-        # 1FN
         s1, td1, mv_cols = normalize_1NF(t, meta, df_t)
         schema_final = merge_schemas(schema_final, s1)
         tablas_data = merge_tables(tablas_data, td1)
 
-        # 2FN (sobre la tabla base t)
         s2, td2, created_2fn = normalize_2NF(t, schema_final, tablas_data)
         schema_final, tablas_data = s2, td2
 
-        # 3FN (sobre la tabla base t)
         s3, td3, created_3fn = normalize_3NF(t, schema_final, tablas_data)
         schema_final, tablas_data = s3, td3
 

@@ -4,39 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Normalización — Análisis FN</title>
+  <!-- ✅ Bootstrap CSS (sin espacios) -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- ✅ Font Awesome (sin espacios) -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <script>mermaid.initialize({ startOnLoad:true, securityLevel:"loose" });</script>
-  <style>
-    :root{ --grad:linear-gradient(135deg,#6366f1 0%,#7c3aed 100%); }
-    body{ min-height:100vh; background:linear-gradient(135deg,#f6f7fb 0,#dfe6f2 100%); }
-    .card-glass{ background:rgba(255,255,255,.92); border:1px solid rgba(0,0,0,.06); border-radius:16px; box-shadow:0 18px 40px rgba(0,0,0,.08);}
-    .title { background:var(--grad); -webkit-background-clip:text; color:transparent; font-weight:800;}
-    .table thead th{ background:var(--grad); color:#fff; border:none;}
-    pre{ background:#0f172a; color:#e2e8f0; border-radius:12px; padding:1rem; }
-    .picker-wrap{ position:relative; }
-    .picker-panel{
-      position:absolute; top:100%; left:0; right:0; z-index:1080;
-      display:none; background:#fff; border:1px solid rgba(0,0,0,.08);
-      border-radius:12px; box-shadow:0 14px 28px rgba(0,0,0,.15);
-      max-height:280px; overflow:auto; margin-top:.25rem;
-    }
-    .picker-panel.show{ display:block; }
-    .hint { font-size:.85rem; color:#6c757d; }
-    .lead{ font-size: 1rem; color:#252526;  text-align: center;}
-  </style>
+  <!-- ✅ Tu CSS personalizado -->
+  <link rel="stylesheet" href="static/css/style.css">
 </head>
 <body>
   <div class="container py-4">
     <div class="d-flex align-items-center justify-content-between mb-3">
       <h1 class="h3 title"><i class="fa-solid fa-database me-2"></i> Análisis de Normalización</h1>
-    </div>  
-    <div class="container py-4"></div>
+    </div>
+    <div class="container py-4">
       <p class="lead">
-                <strong>Administración de Bases de Datos 2 – Grupo #4</strong><br>
-                Proyecto del Primer Parcial
-            </p>
+        <strong>Administración de Bases de Datos 2 – Grupo #4</strong><br>
+        Proyecto del Primer Parcial
+      </p>
     </div>
 
     <div class="card-glass p-3 p-md-4">
@@ -74,34 +58,31 @@
           </form>
         </div>
 
-        <!-- SQL con campo Servidor opcional -->
+        <!-- SQL -->
         <div class="tab-pane fade show active" id="sql-pane">
           <form method="POST" id="sqlForm">
             <input type="hidden" name="source" value="sql" />
             <input type="hidden" name="sql_schema" value="dbo" />
             <div class="row g-3">
-              <!-- NUEVO: input de servidor -->
-
               <div class="col-md-12">
-          <label class="form-label fw-semibold">Servidor (opcional)</label>
-          <div class="input-group">
-            <span class="input-group-text"><i class="fa-solid fa-computer"></i></span>
-            <input
-              type="text"
-              name="sql_server"
-              class="form-control"
-              placeholder="Ej: MI-PC\\SQLEXPRESS o localhost"
-              autocomplete="off">
-            <button type="button" id="btnProbeServer" class="btn btn-outline-secondary">
-              <i class="fa-solid fa-plug-circle-bolt me-1"></i>Probar servidor y listar bases
-            </button>
-          </div>
-          <div class="hint mt-1">
-            Déjalo vacío para <b>autodetección</b>. Ingresa <code>HOST\INSTANCIA</code> si tu SQL no es local o está en una instancia nombrada.
-          </div>
-          <div id="serverProbe" class="hint mt-1"></div>
-        </div>
-
+                <label class="form-label fw-semibold">Servidor (opcional)</label>
+                <div class="input-group">
+                  <span class="input-group-text"><i class="fa-solid fa-computer"></i></span>
+                  <input
+                    type="text"
+                    name="sql_server"
+                    class="form-control"
+                    placeholder="Ej: MI-PC\\SQLEXPRESS o localhost"
+                    autocomplete="off">
+                  <button type="button" id="btnProbeServer" class="btn btn-outline-secondary">
+                    <i class="fa-solid fa-plug-circle-bolt me-1"></i>Probar servidor y listar bases
+                  </button>
+                </div>
+                <div class="hint mt-1">
+                  Déjalo vacío para <b>autodetección</b>. Ingresa <code>HOST\INSTANCIA</code> si tu SQL no es local o está en una instancia nombrada.
+                </div>
+                <div id="serverProbe" class="hint mt-1"></div>
+              </div>
 
               <div class="col-md-6 picker-wrap">
                 <label class="form-label fw-semibold">Base de datos</label>
@@ -148,11 +129,17 @@
     {% if resultado_1fn %}
     <div class="alert alert-info mt-3">{{ resultado_1fn }}</div>
     {% endif %}
-    {% if resultado_2fn %}
-    <div class="alert alert-warning mt-2"><ul class="mb-0">{% for m in resultado_2fn %}<li>{{ m }}</li>{% endfor %}</ul></div>
+
+    {% if resultado_2fn and "No se evalúa 2FN" not in resultado_2fn[0] %}
+    <div class="alert alert-warning mt-2">
+      <ul class="mb-0">{% for m in resultado_2fn %}<li>{{ m }}</li>{% endfor %}</ul>
+    </div>
     {% endif %}
-    {% if resultado_3fn %}
-    <div class="alert alert-success mt-2"><ul class="mb-0">{% for m in resultado_3fn %}<li>{{ m }}</li>{% endfor %}</ul></div>
+
+    {% if resultado_3fn and "No se evalúa 3FN" not in resultado_3fn[0] %}
+    <div class="alert alert-success mt-2">
+      <ul class="mb-0">{% for m in resultado_3fn %}<li>{{ m }}</li>{% endfor %}</ul>
+    </div>
     {% endif %}
 
     {% if resumen_acciones %}
@@ -193,163 +180,13 @@
     {% endif %}
   </div>
 
+  <!-- ✅ Scripts: en orden correcto, al final del body -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <script>
-    // ===== Helpers =====
-    const $ = (s) => document.querySelector(s);
-    const val = (n) => document.querySelector(`[name="${n}"]`)?.value?.trim() || "";
-
-    async function postJSON(url, data){
-      const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
-      const j = await r.json();
-      if(!r.ok) throw new Error(j.error || 'Error');
-      return j;
-    }
-
-    // ===== Pickers =====
-    function hidePickers(){ $('#dbPicker')?.classList.remove('show'); $('#tblPicker')?.classList.remove('show'); }
-    document.addEventListener('click', (e)=>{ if(!e.target.closest('.picker-wrap')) hidePickers(); });
-
-    function renderDbList(dbs){
-      const c = $('#dbList'); c.innerHTML = '';
-      if(!dbs?.length){ c.innerHTML = '<div class="p-2 text-muted">No hay bases disponibles</div>'; return; }
-      dbs.forEach((db)=>{
-        const a = document.createElement('button');
-        a.type = 'button';
-        a.className = 'list-group-item list-group-item-action';
-        a.textContent = db;
-        a.addEventListener('click', ()=>{
-          document.querySelector('[name="sql_db"]').value = db;
-          document.querySelector('[name="sql_table"]').value = '';
-          hidePickers();
-        });
-        c.appendChild(a);
-      });
-    }
-
-    function renderTablesTree(grouped){
-      const el = $('#tablesTree'); el.innerHTML = '';
-      const schemas = Object.keys(grouped||{});
-      if(!schemas.length){ el.innerHTML = '<div class="p-2 text-muted">No se encontraron tablas.</div>'; return; }
-
-      let html = '';
-      schemas.forEach((schema, i)=>{
-        html += `
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="h${i}">
-              <button class="accordion-button ${i ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#c${i}">
-                <i class="fa-solid fa-folder-tree me-2"></i>${schema}
-              </button>
-            </h2>
-            <div id="c${i}" class="accordion-collapse collapse ${i ? '' : 'show'}">
-              <div class="accordion-body p-0">
-                <ul class="list-group list-group-flush">`;
-
-        const tables = grouped[schema] || [];
-        for(const t of tables){
-          html += `
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              <span>${schema}.${t}</span>
-              <button type="button" class="btn btn-sm btn-outline-success pick" data-schema="${schema}" data-table="${t}">
-                <i class="fa-solid fa-hand-pointer me-1"></i>Seleccionar
-              </button>
-            </li>`;
-        }
-
-        html += `
-                </ul>
-              </div>
-            </div>
-          </div>`;
-      });
-
-      el.innerHTML = html;
-
-      el.querySelectorAll('.pick').forEach((b)=>{
-        b.addEventListener('click', ()=>{
-          const s = b.getAttribute('data-schema');
-          const t = b.getAttribute('data-table');
-          document.querySelector('[name="sql_schema"]').value = s;
-          document.querySelector('[name="sql_table"]').value = t;
-          hidePickers();
-        });
-      });
-    }
-
-    // ===== Acciones con servidor manual =====
-    async function openDbPicker(){
-      try{
-        const server = val('sql_server'); // <- NUEVO: enviamos servidor si lo hay
-        const res = await postJSON('/api/sql/probe', server ? { server } : {});
-        // Feedback visual del servidor realmente usado
-        if(res.server){
-          $('#serverProbe').innerHTML = `<i class="fa-solid fa-circle-check"></i> Conectado a: <b>${res.server}</b>`;
-        }else{
-          $('#serverProbe').innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> No se pudo autodetectar servidor. Ingresa uno manualmente.`;
-        }
-        renderDbList(res.databases || []);
-        $('#dbPicker').classList.add('show');
-      }catch(err){
-        console.error('probe failed:', err);
-        $('#serverProbe').innerHTML = `<span class="text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message}</span>`;
-        alert('No se pudo obtener las bases de datos.\n' + err.message);
-      }
-    }
-
-    async function openTablesPicker(){
-      const db = val('sql_db');
-      if(!db){ $('#dbPicker').classList.add('show'); return; }
-      try{
-        const server = val('sql_server'); // <- NUEVO
-        const body = server ? { server, database: db } : { database: db };
-        const res = await postJSON('/api/sql/tables', body);
-        renderTablesTree(res.schemas || {});
-        $('#tblPicker').classList.add('show');
-      }catch(err){
-        console.error('tables failed:', err);
-        alert('No se pudieron listar las tablas.\n' + err.message);
-      }
-    }
-
-    // Botón "Probar servidor y listar bases"
-    document.getElementById('btnProbeServer')?.addEventListener('click', openDbPicker);
-
-    // Eventos (click para abrir pickers)
-    document.querySelector('[name="sql_db"]')?.addEventListener('click', openDbPicker);
-    document.querySelector('[name="sql_table"]')?.addEventListener('click', openTablesPicker);
-
-    // Copiar / Descargar SQL
-    document.getElementById('copySql')?.addEventListener('click', async ()=>{
-      const t = document.getElementById('sqlBox')?.innerText || '';
-      if(!t) return;
-      await navigator.clipboard.writeText(t);
-      alert('Script SQL copiado.');
-    });
-    document.getElementById('dlSql')?.addEventListener('click', ()=>{
-      const t = document.getElementById('sqlBox')?.innerText || '';
-      if(!t) return;
-      const blob = new Blob([t], {type:'text/sql;charset=utf-8'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download='normalizacion_3FN.sql'; document.body.appendChild(a);
-      a.click(); URL.revokeObjectURL(url); a.remove();
-    });
-
-    // Validación submit
-    document.getElementById('sqlForm')?.addEventListener('submit', (e)=>{
-      if(!val('sql_db') || !val('sql_table')){
-        e.preventDefault();
-        alert('Selecciona Base de datos y Tabla.');
-      }
-    });
-
-    // Validación CSV
-    document.querySelectorAll('input[type="file"]').forEach((inp)=>{
-      inp.addEventListener('change', (e)=>{
-        const f = e.target.files[0];
-        if(f && !f.name.toLowerCase().endsWith('.csv')) e.target.value='';
-      });
-    });
+    // Inicializa mermaid después de cargarlo
+    mermaid.initialize({ startOnLoad: true, securityLevel: "loose" });
   </script>
+  <script src="static/js/dbconex.js"></script>
 </body>
 </html>

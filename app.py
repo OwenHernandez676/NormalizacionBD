@@ -14,7 +14,7 @@ from scripts.sql_utils import (
 )
 import pyodbc
 
-# IMPORTANTE: tu carpeta es "Templates" con T mayúscula
+
 app = Flask(__name__, template_folder="Templates")
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -127,7 +127,6 @@ def index():
                     datos_df = pd.read_csv(p)
 
             elif source == 'sql':
-                # CONEXIÓN 100% AUTOMÁTICA (sin servidor en UI)
                 database = request.form.get('sql_db') or None
                 schema_name = request.form.get('sql_schema') or 'dbo'
                 table = request.form.get('sql_table') or None
@@ -151,27 +150,39 @@ def index():
         # ----- Evaluación + pipeline -----
         if datos_df is not None:
             ok1, col, val = verificar_1FN(datos_df)
-            resultado_1fn = "✅ Cumple con la Primera Forma Normal (1FN)." if ok1 else \
-                            f"❌ No cumple con 1FN. Columna '{col}' tiene valor no atómico: '{val}'"
-            if estructura_df is not None:
-                resultado_2fn = verificar_2FN(estructura_df, datos_df)
-            resultado_3fn = verificar_3FN(datos_df, estructura_df)
+            if not ok1:
+                resultado_1fn = f"❌ No cumple con la Primera Forma Normal (1FN). Columna '{col}' tiene valor no atómico: '{val}'"
+                resultado_2fn = ["❌ No se evalúa 2FN porque no cumple con 1FN."]
+                resultado_3fn = ["❌ No se evalúa 3FN porque no cumple con 1FN."]
+                schema_final = tablas_data = diagram_mermaid = sql_script = descripcion = resumen_acciones = None
+                tablas_result_html = []
+            else:
+                resultado_1fn = "✅ Cumple con la Primera Forma Normal (1FN)."
+                if estructura_df is not None:
+                    resultado_2fn = verificar_2FN(estructura_df, datos_df)
+                    if "❌" in resultado_2fn[0]:
+                        resultado_3fn = ["❌ No se evalúa 3FN porque no cumple con 2FN."]
+                    else:
+                        resultado_3fn = verificar_3FN(datos_df, estructura_df)
+                else:
+                    resultado_2fn = ["⚠️ Estructura no disponible para evaluar 2FN."]
+                    resultado_3fn = ["⚠️ Estructura no disponible para evaluar 3FN."]
 
-            if estructura_df is not None:
-                (
-                    schema_final,
-                    tablas_data,
-                    diagram_mermaid,
-                    sql_script,
-                    descripcion,
-                    resumen_acciones,
-                ) = normalizar_pipeline(estructura_df, datos_df)
+                if estructura_df is not None:
+                    (
+                        schema_final,
+                        tablas_data,
+                        diagram_mermaid,
+                        sql_script,
+                        descripcion,
+                        resumen_acciones,
+                    ) = normalizar_pipeline(estructura_df, datos_df)
 
-                for name, df in tablas_data.items():
-                    tablas_result_html.append((
-                        name,
-                        df.head(50).to_html(classes='table table-sm table-striped', index=False)
-                    ))
+                    for name, df in tablas_data.items():
+                        tablas_result_html.append((
+                            name,
+                            df.head(50).to_html(classes='table table-sm table-striped', index=False)
+                        ))
 
         return render_template(
             'index.html',
