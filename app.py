@@ -5,7 +5,6 @@ from itertools import combinations
 
 from scripts.normalizer import normalizar_pipeline
 from scripts.sql_utils import (
-    connect_sql_server,
     get_table_structure_df,
     fetch_table_df,
     list_databases,
@@ -21,7 +20,6 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
-# ---------- Utilidades ----------
 def proper_subsets(pk_cols):
     for r in range(1, len(pk_cols)):
         for combo in combinations(pk_cols, r):
@@ -30,8 +28,18 @@ def proper_subsets(pk_cols):
 def es_valor_atomico(valor):
     if pd.isna(valor):
         return True
-    if isinstance(valor, str) and any(sep in valor for sep in [",", ";", "/", "|", "[", "]"]):
-        return False
+    if not isinstance(valor, str):
+        return True
+    clean = valor.strip()
+    if len(clean) == 0:
+        return True
+    for sep in [",", ";", "/", "|", "\n"]:
+        if sep in clean:
+            parts = [p.strip() for p in clean.split(sep)]
+            non_empty = [p for p in parts if p]
+            if len(non_empty) > 1:
+                if not all(p.endswith(".") for p in non_empty[:-1]):
+                    return False
     return True
 
 def verificar_1FN(df: pd.DataFrame):
@@ -44,7 +52,7 @@ def verificar_1FN(df: pd.DataFrame):
 def verificar_2FN(estructura_df: pd.DataFrame, datos_df: pd.DataFrame):
     mensajes = []
     estructura_df = estructura_df.copy()
-    estructura_df['llave'] = estructura_df.get('llave', pd.Series([""] * len(estructura_df))).astype(str)
+    estructura_df['llave'] = estructura_df.get('llave', "").astype(str)
 
     for tabla, chunk in estructura_df.groupby('tabla'):
         pk = chunk[chunk['llave'].str.contains('PK', case=False, na=False)]['atributo'].tolist()
@@ -63,10 +71,11 @@ def verificar_2FN(estructura_df: pd.DataFrame, datos_df: pd.DataFrame):
                     continue
                 if g.index.nunique() >= 2 and g.max() == 1:
                     mensajes.append(
-                        f"❌ '{col}' depende solo de parte de la clave compuesta {sub} en la tabla '{tabla}'"
+                        f"❌ '{col}' depende solo de parte de la clave {sub}. "
+                        f"Sugerencia: crea una tabla con clave ({', '.join(sub)}) y mueve '{col}' a ella."
                     )
     if not mensajes:
-        mensajes.append("✅ Los datos cumplen con la Segunda Forma Normal (2FN).")
+        mensajes.append("✅ Cumple con la Segunda Forma Normal (2FN).")
     return mensajes
 
 def verificar_3FN(datos_df: pd.DataFrame, estructura_df: pd.DataFrame | None = None):
@@ -90,13 +99,15 @@ def verificar_3FN(datos_df: pd.DataFrame, estructura_df: pd.DataFrame | None = N
             except Exception:
                 continue
             if g.max() == 1:
-                mensajes.append(f"❌ Existe una dependencia transitoria: '{target}' depende de '{det}'")
+                mensajes.append(
+                    f"❌ '{target}' depende de '{det}', que no es clave. "
+                    f"Sugerencia: crea una tabla con clave ('{det}') y mueve '{target}' a ella."
+                )
     if not mensajes:
-        mensajes.append("✅ Los datos cumplen con la Tercera Forma Normal (3FN).")
+        mensajes.append("✅ Cumple con la Tercera Forma Normal (3FN).")
     return mensajes
 
 
-# ---------- Home ----------
 @app.route('/', methods=['GET', 'POST'])
 def index():
     try:
@@ -111,47 +122,47 @@ def index():
         tablas_result_html = []
         resumen_acciones = None
 
-        if request.method == 'POST':
-            source = request.form.get('source', 'csv')
+        source = request.form.get('source', 'csv')
 
-            if source == 'csv':
-                estructura_file = request.files.get('estructura')
-                datos_file = request.files.get('datos')
-                if estructura_file and estructura_file.filename.lower().endswith('.csv'):
-                    p = os.path.join(app.config['UPLOAD_FOLDER'], estructura_file.filename)
-                    estructura_file.save(p)
-                    estructura_df = pd.read_csv(p)
-                if datos_file and datos_file.filename.lower().endswith('.csv'):
-                    p = os.path.join(app.config['UPLOAD_FOLDER'], datos_file.filename)
-                    datos_file.save(p)
-                    datos_df = pd.read_csv(p)
+        if source == 'csv':
+            estructura_file = request.files.get('estructura')
+            datos_file = request.files.get('datos')
+            if estructura_file and estructura_file.filename.lower().endswith('.csv'):
+                p = os.path.join(app.config['UPLOAD_FOLDER'], estructura_file.filename)
+                estructura_file.save(p)
+                estructura_df = pd.read_csv(p)
+            if datos_file and datos_file.filename.lower().endswith('.csv'):
+                p = os.path.join(app.config['UPLOAD_FOLDER'], datos_file.filename)
+                datos_file.save(p)
+                datos_df = pd.read_csv(p)
 
-            elif source == 'sql':
-                database = request.form.get('sql_db') or None
-                schema_name = request.form.get('sql_schema') or 'dbo'
-                table = request.form.get('sql_table') or None
+        elif source == 'sql':
+            database = request.form.get('sql_db') or None
+            schema_name = request.form.get('sql_schema') or 'dbo'
+            table = request.form.get('sql_table') or None
 
-                conn = None
+            conn = None
+            try:
+                conn, _used_server = safe_connect_autodetect(database=database)
+                if conn is None:
+                    raise RuntimeError("No se pudo establecer conexión automática con SQL Server.")
+                if not (database and table):
+                    raise ValueError("Selecciona Base de datos y Tabla.")
+
+                datos_df = fetch_table_df(conn, schema_name, table)
+                estructura_df = get_table_structure_df(conn, schema_name, table)
+            finally:
                 try:
-                    conn, _used_server = safe_connect_autodetect(database=database)
-                    if conn is None:
-                        raise RuntimeError("No se pudo establecer conexión automática con SQL Server.")
-                    if not (database and table):
-                        raise ValueError("Selecciona Base de datos y Tabla.")
+                    if conn: conn.close()
+                except Exception:
+                    pass
 
-                    datos_df = fetch_table_df(conn, schema_name, table)
-                    estructura_df = get_table_structure_df(conn, schema_name, table)
-                finally:
-                    try:
-                        if conn: conn.close()
-                    except Exception:
-                        pass
-
-        # ----- Evaluación + pipeline -----
         if datos_df is not None:
             ok1, col, val = verificar_1FN(datos_df)
             if not ok1:
-                resultado_1fn = f"❌ No cumple con la Primera Forma Normal (1FN). Columna '{col}' tiene valor no atómico: '{val}'"
+                resultado_1fn = (f"❌ No cumple con la Primera Forma Normal (1FN). "
+                               f"Columna '{col}' tiene valor no atómico: '{val}'. "
+                               f"Sugerencia: separa los valores en filas o crea una tabla relacionada.")
                 resultado_2fn = ["❌ No se evalúa 2FN porque no cumple con 1FN."]
                 resultado_3fn = ["❌ No se evalúa 3FN porque no cumple con 1FN."]
                 schema_final = tablas_data = diagram_mermaid = sql_script = descripcion = resumen_acciones = None
@@ -160,7 +171,7 @@ def index():
                 resultado_1fn = "✅ Cumple con la Primera Forma Normal (1FN)."
                 if estructura_df is not None:
                     resultado_2fn = verificar_2FN(estructura_df, datos_df)
-                    if "❌" in resultado_2fn[0]:
+                    if any("❌" in m for m in resultado_2fn):
                         resultado_3fn = ["❌ No se evalúa 3FN porque no cumple con 2FN."]
                     else:
                         resultado_3fn = verificar_3FN(datos_df, estructura_df)
@@ -202,21 +213,16 @@ def index():
         return f"Error en la aplicación: {e}", 500
 
 
-# ===== API: Autodetectar y listar bases (sin servidor) =====
 @app.post("/api/sql/probe")
 def api_sql_probe():
     try:
-        payload = request.get_json(silent=True) or {}
-        database = payload.get("database")  # opcional; normalmente None aquí
-
-        # Conexión automática
-        conn, used = safe_connect_autodetect(database=database)
+        conn, used_server = safe_connect_autodetect()
         if conn is None:
-            return jsonify({"ok": False, "error": "No fue posible conectar automáticamente."}), 400
+            return jsonify({"ok": False, "error": "No se pudo conectar al servidor SQL."}), 400
 
         try:
             dbs = list_databases(conn)
-            return jsonify({"ok": True, "server": used, "databases": dbs})
+            return jsonify({"ok": True, "server": used_server, "databases": dbs})
         finally:
             try: conn.close()
             except Exception: pass
@@ -225,7 +231,6 @@ def api_sql_probe():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# ===== API: Listar tablas por esquema (sin servidor) =====
 @app.post("/api/sql/tables")
 def api_sql_tables():
     try:
@@ -234,7 +239,6 @@ def api_sql_tables():
         if not database:
             return jsonify({"ok": False, "error": "Falta 'database'."}), 400
 
-        # Conexión automática
         conn, used_server = safe_connect_autodetect(database=database)
         if conn is None:
             return jsonify({"ok": False, "error": "No se pudo conectar."}), 400

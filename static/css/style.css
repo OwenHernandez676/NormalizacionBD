@@ -25,6 +25,8 @@ body {
     background: var(--grad);
     color: #fff;
     border: none;
+    text-align: center;
+    vertical-align: middle;
 }
 
 pre {
